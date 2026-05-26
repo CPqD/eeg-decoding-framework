@@ -1,0 +1,49 @@
+# 1. DATASETS Filter
+/data/*
+!/data/*.txt
+!/data/*.md
+
+# 2. PYTHON & ENVIRONMENT
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv-bci-clf/
+.venv/
+venv/
+env/
+.env
+*.log
+
+# 3. Models and Training
+*.h5
+*.keras
+*.ckpt
+checkpoint
+saved_model/
+assets/
+logs/
+.ipynb_checkpoints/
+
+# 4. SYSTEM AND IDE
+.vscode/
+.idea/
+.DS_Store
+*~
+*.swp
+
+# 5. Figures
+/figures/*
+!/figures/.gitkeep
+
+# 6. Ignora todo o conteúdo da pasta notebooks
+notebooks/*
+
+# Abre uma exceção para o arquivo específico
+!notebooks/example.ipynb
+
+# 7. Package
+*.egg-info/
