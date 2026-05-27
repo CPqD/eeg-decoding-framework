@@ -1,8 +1,9 @@
 # 1. DATASETS Filter
 /data/*
+!/data/images/
+!/data/images/*.png
 !/data/*.txt
 !/data/*.md
-!/data/images/*.png
 
 # 2. PYTHON & ENVIRONMENT
 __pycache__/
