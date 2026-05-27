@@ -27,8 +27,7 @@ eeg_framework/
 ├── features/
 ├── models/
 ├── evaluate/
-├── plotting/
-└── utils/
+└── plotting/
 ```
 
 ---
@@ -135,16 +134,6 @@ from eeg_framework.plotting import *
 
 plot_erp_compare(epochs) 
 # ...
-```
-
----
-
-## Utilities
-
-```python
-from eeg_framework.utils *
-
-# Utils...
 ```
 
 ---
