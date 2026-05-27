@@ -2,7 +2,7 @@
 /data/*
 !/data/*.txt
 !/data/*.md
-!/data/*.png
+!/data/images/*.png
 
 # 2. PYTHON & ENVIRONMENT
 __pycache__/
