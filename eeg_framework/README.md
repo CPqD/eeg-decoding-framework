@@ -15,7 +15,7 @@ The framework handles non-structured raw EEG data (e.g., .bdf, .cnt, .edf) and t
 
 Standardized cleaning pipelines are executed sequentially on `mne.Epochs` objects.
 
-* **Core Components:** `PreprocessingPipeline` (sequential flow) and `BaseStep` (abstract base class)` found in `preprocessing/preprocessing.py`.  
+* **Core Components:** `PreprocessingPipeline` (sequential flow) and `BaseStep` (abstract base class) found in `preprocessing/preprocessing.py`.  
 * **Steps Example:** For specific implementations examples, refer to `datasets/openbmi_mi_example.py` .  
 
 ## 3. Feature Extraction
@@ -35,7 +35,7 @@ This stage maps extracted characteristics to their respective class labels $(X \
 
 ## 5. Evaluate
 
-This step receives the `test` data and the data `predicted by the model` and calculates validation metrics.
+This step receives the `test` data and the data predicted by the model and calculates validation metrics.
 
 * **Step Example:** A simple validation is implemented on `evaluate/evaluate_example.py`. No Base class e required. 
 

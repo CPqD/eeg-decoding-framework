@@ -1,6 +1,6 @@
 # EEG Framework
 
-A modular Python framework for EEG-based Brain-Computer Interface (BCI) research, with a focus on imagined speech classification. Built on top of [MNE-Python](https://mne.tools/) and scikit-learn conventions.
+A modular Python framework for EEG-based Brain-Computer Interface (BCI) research, with a focus on Brain-to-Speech (BTS) and Motor Imagery (MI) classification. Built on top of [MNE-Python](https://mne.tools/) and scikit-learn conventions.
 
 ---
 
@@ -14,7 +14,6 @@ The framework provides end-to-end support for EEG classification pipelines:
 - **Deep learning models**
 - **Evaluation**
 - **Plotting**
-- **Utilities**
 
 ---
 
@@ -59,8 +58,8 @@ Each step accepts `mne.BaseEpochs` and returns `mne.BaseEpochs` (copy — never 
 from eeg_framework.preprocessing import *
 
 pipe = Pipeline([
-    ('car',        CAR()),
-    ('resample',   Resample(256.)),
+    ('CAR',        CAR()),
+    ('RESAMPLE',   Resample(256.)),
     # ...
 ])
 
@@ -73,7 +72,7 @@ epochs_valid_clean = pipe.transform(epochs_valid)
 ## Feature Extraction
 
 All extractors return `(X, y)` where `X` is `(n_epochs, n_features)` and `y` is `(n_epochs,)`.  
-The label mapping is captured during `fit` and reused during `transform` — consistent even when validation epochs are missing a class.
+The label mapping is captured during `fit` and reused during `transform`.
 
 ```python
 from eeg_framework.features import *
@@ -133,6 +132,8 @@ metrics = compute_metrics(y_valid, y_pred, class_names=list(epochs_train.event_i
 from eeg_framework.plotting import *
 
 plot_erp_compare(epochs) 
+
+# Othe Plots...
 # ...
 ```
 

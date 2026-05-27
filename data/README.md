@@ -43,3 +43,10 @@ root/
 ```
 
 
+---
+
+## Experimental Paradigm
+
+The MI and BTS paradigms follow a standard experimental protocol presented below. Each trial begins with a fixation interval, where a central symbol prepares the subject for the upcoming task. During the task execution, MI subjects perform an imagined grasping motion following a visual cue (right or left arrow), while BTS subjects imagine articulating a word (inner speech) presented prior to the fixation period. Each test ends with a rest interval. Multiple trials are performed using balanced classes.
+
+![Experimental Paradigm](images/experimental_paradigm.png)
