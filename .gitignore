@@ -1,5 +1,7 @@
 # 1. DATASETS Filter
 /data/*
+!/data/images/
+!/data/images/*.png
 !/data/*.txt
 !/data/*.md
 
