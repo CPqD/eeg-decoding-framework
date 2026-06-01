@@ -107,5 +107,70 @@ def compute_metrics(
 # Functions 
 # ...
 
-# Plots
+# ----------------------------------------------------------------------------------------
+# 2. Plots
+# ----------------------------------------------------------------------------------------
+def plot_metrics_bar(
+    y_true:      np.ndarray,
+    y_pred:      np.ndarray,
+    metrics:     list[str]            = ["accuracy", "f1", "recall"],
+    class_names: Optional[list[str]]  = None,
+    title:       str                  = "Per-class metrics",
+    savepath:    Optional[str]        = None,
+    show:        bool                 = True,
+) -> plt.Figure:
+    """
+    Bar chart of per-class metrics.
+ 
+    Parameters
+    ----------
+    metrics : list[str]
+        Any combination of 'accuracy', 'f1', 'recall'.
+    """
+    _valid = {"accuracy", "f1", "recall"}
+    invalid = set(metrics) - _valid
+    if invalid:
+        raise ValueError(f"Invalid metrics: {invalid}. Choose from {_valid}")
+    
+    result    = compute_metrics(y_true, y_pred, class_names)
+    per_class = result["per_class"]
+    classes   = list(per_class.keys())
+    n_classes = len(classes)
+    n_metrics = len(metrics)
+
+    x = np.arange(n_classes)
+    width = 0.8 / n_metrics
+    colors = ["#082bc5", "#f30e0e", "#09b917"]
+
+    fig, ax = plt.subplots(figsize=(max(8, n_classes * 1.5), 5))
+
+    for i, metric in enumerate(metrics):
+        values = [per_class[cls][metric] for cls in classes]
+        offset = (i - n_metrics / 2 + 0.5) * width
+        bars   = ax.bar(x + offset, values, width=width * 0.9,
+                        label=metric.capitalize(), color=colors[i % len(colors)], 
+                        edgecolor='k', lw=0.8)
+    
+        for bar, val in zip(bars, values):
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.01,
+                    f"{val:.2f}", ha="center", va="bottom", fontsize=8)
+    
+    ax.axhline(1 / n_classes, color="black", linewidth=1,
+               linestyle="--", label=f"Chance ({1/n_classes:.2f})")
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(classes, rotation=30, ha="right")
+    ax.set_ylim(0, 1.15)
+    ax.set_ylabel("Score")
+    ax.set_title(title)
+    ax.legend(loc="upper right", fontsize=9)
+    fig.tight_layout()
+
+    if show:
+        plt.show()
+
+    return fig
+
+# Functions 
 # ...
