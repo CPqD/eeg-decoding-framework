@@ -49,6 +49,8 @@ from pathlib import Path
 from typing import Literal, Union, Optional
 from scipy.io import loadmat
 
+from .datasets import EpochBuilder
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -78,7 +80,6 @@ DEFAULT_TMAX_MS = 4000
 # EEG Montage
 MONTAGE = "standard_1005"
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -100,31 +101,6 @@ def _extract_channel_names(chan_field) -> list[str]:
         RuntimeWarning,
     )
     return CHANNEL_NAMES
-
-def _apply_filter(
-    raw:        mne.io.RawArray,
-    l_freq:     Optional[float],
-    h_freq:     Optional[float],
-    notch_freq: Optional[float],
-    verbose:    Union[bool, str, int, None],
-) -> None:
-    """Apply bandpass and/or notch filter to EEG channels in-place."""
-    if l_freq is not None or h_freq is not None:
-        raw.filter(
-            l_freq  = l_freq,
-            h_freq  = h_freq,
-            picks   = "eeg",
-            method  = "fir",
-            verbose = verbose,
-        )
-    if notch_freq is not None:
-        raw.notch_filter(
-            freqs   = notch_freq,
-            picks   = "eeg",
-            method  = "fir",
-            verbose = verbose,
-        )
-
 
 # ---------------------------------------------------------------------------
 # Reader
@@ -182,18 +158,17 @@ class OpenBMIMIReader:
         if not self.root_dir.exists():
             raise FileNotFoundError(f"root_dir not found: {self.root_dir}")
         if self.split not in ("train", "test"):
-            raise ValueError(f"split must be 'train' or 'test', got '{self.split}'")
+            raise ValueError(f"split must be 'train' or 'test', got '{self.split}'")        
     
+
     def get_epochs(self, subject: int, session: int) -> mne.EpochsArray:
         """
         Load and return mne.EpochsArray for one subject and session.
  
         Pipeline applied internally:
             1. Load .mat file
-            2. Build RawArray from continuous EEG (x field)
-            3. Apply bandpass + notch filter (if requested)
-            4. Epoch around stimulus onsets (t field)
-            5. Attach metadata (subject, session, split)
+            2. Extract fields
+            3. Apply framework's epoch builder
  
         Parameters
         ----------
@@ -231,54 +206,28 @@ class OpenBMIMIReader:
         labels   = np.squeeze(eeg_struct["y_dec"]).astype(int) # 1 = right, 2 = left
         ch_names = _extract_channel_names(eeg_struct["chan"])
 
-        n_trials   = len(t)
-        n_channels = len(ch_names)
-
-        # ---- 3. Build RawArray and filter --------------------------------
-        info =  mne.create_info(
-            ch_names = ch_names,
-            sfreq    = fs,
-            ch_types = ["eeg"] * n_channels,
-        )
-        info.set_montage(MONTAGE, on_missing="warn", verbose=self.verbose) 
-        
-        # x is (n_samples, n_channels) → RawArray expects (n_channels, n_samples)
-        raw = mne.io.RawArray(x.T, info, verbose=self.verbose)
-
-        _apply_filter(raw, self.l_freq, self.h_freq, self.notch_freq, self.verbose)
-
-        # ---- 4. Epoch ---------------------------------------------------
-        tmin_s = self.tmin_ms / 1000.0
-        tmax_s = self.tmax_ms / 1000.0
-        
-        # Build MNE-style events array (n_trials × 3)
-        # Use sample onset directly from the mat file (already in samples)
-        events_arr = np.column_stack([
-            t,
-            np.zeros(n_trials, dtype=int),
-            labels,
-        ])
-
-        epochs = mne.Epochs(
-            raw,
-            events   = events_arr,
-            event_id = EVENT_ID,
-            tmin     = tmin_s,
-            tmax     = tmax_s,
-            picks    = "eeg",
-            preload  = True,
-            baseline = None,
-            verbose  = self.verbose,
-        )
-
-        # ---- 5. Metadata ------------------------------------------------
+        # ---- 3. build epochs -------------------------------------------
         metadata = pd.DataFrame({
             "subject": subject,
             "session": session,
             "split":   self.split,
-        }, index=range(len(epochs)))
-        epochs.metadata = metadata
-        
+        }, index=range(len(t)))
+
+        epochs = EpochBuilder(
+            sfreq=fs,
+            ch_names=ch_names,
+            event_id=EVENT_ID,
+            montage_name=MONTAGE,
+            tmin_ms=self.tmin_ms,
+            tmax_ms=self.tmax_ms,
+            l_freq=self.l_freq,
+            h_freq=self.h_freq,
+            notch_freq=self.notch_freq,
+            verbose=self.verbose,
+        ).build(x=x, onsets=t, labels=labels,metadata_dict=metadata)
+
+        # ---- Print ---------------------------------------------------
+                
         print(
             f"[OpenBMIMI] subject={subject} session={session} "
             f"split='{self.split}' | "
