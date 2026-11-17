@@ -3,8 +3,8 @@ from .features import (
 )
 
 from .features_example import (
-    RawFeatures,
+    RawFeatures, CSP
 )
 
 
-__all__ = ["RawFeatures", "FeaturePipeline"]
+__all__ = ["RawFeatures", "FeaturePipeline", "CSP"]
