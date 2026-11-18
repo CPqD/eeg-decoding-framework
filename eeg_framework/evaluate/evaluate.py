@@ -1,21 +1,7 @@
-"""
-eeg_toolbox.evaluation
-======================
-Evaluation utilities for EEG classification models.
- 
-Handles two input formats:
-    y_pred : (n_trials,)           — integer class predictions
-    y_prob : (n_trials, n_classes) — class probabilities (softmax output)
- 
-Functions
----------
-compute_metrics       — accuracy, f1, recall, confusion matrix, kappa, ROC AUC
-"""
-
 import numpy as np
 from typing import Optional
 import matplotlib.pyplot as plt
-import os
+from matplotlib.colors import ListedColormap
 
 # ----------------------------------------------------------------------------------------
 # Helpers
@@ -104,11 +90,37 @@ def compute_metrics(
         "per_class":        per_class,
     }
 
-# Functions 
-# ...
+# ----------------------------------------------------------------------------------------
+# 2. Metrics Summary
+# ----------------------------------------------------------------------------------------
+def summary(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    class_names: Optional[list[str]] = None,
+) -> None:
+    """Print a formatted summary of all metrics."""
+    metrics = compute_metrics(y_true, y_pred, class_names)
+
+    print("─" * 45)
+    print(f"  Accuracy        : {metrics['accuracy']:.4f}")
+    print(f"  F1 (macro)      : {metrics['f1_macro']:.4f}")
+    print(f"  F1 (weighted)   : {metrics['f1_weighted']:.4f}")
+    print(f"  Recall (macro)  : {metrics['recall_macro']:.4f}")
+    print(f"  Cohen's Kappa   : {metrics['cohen_kappa']:.4f}")
+    print("─" * 45)
+    print(f"  {'Class':<14} {'Accuracy':>9} {'F1':>9} {'Recall':>9}")
+    print("─" * 45)
+    for cls, vals in metrics["per_class"].items():
+        print(
+            f"  {cls:<14} "
+            f"{vals['accuracy']:>9.4f} "
+            f"{vals['f1']:>9.4f} "
+            f"{vals['recall']:>9.4f}"
+        )
+    print("─" * 45)
 
 # ----------------------------------------------------------------------------------------
-# 2. Plots
+# 3. PLot metrics
 # ----------------------------------------------------------------------------------------
 def plot_metrics_bar(
     y_true:      np.ndarray,
@@ -171,71 +183,89 @@ def plot_metrics_bar(
         plt.show()
     return fig
 
-# Functions 
-# ...
-def summary(
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-    class_names: Optional[list[str]] = None,
-) -> None:
-    """Print a formatted summary of all metrics."""
-    metrics = compute_metrics(y_true, y_pred, class_names)
 
-    print("─" * 45)
-    print(f"  Accuracy        : {metrics['accuracy']:.4f}")
-    print(f"  F1 (macro)      : {metrics['f1_macro']:.4f}")
-    print(f"  F1 (weighted)   : {metrics['f1_weighted']:.4f}")
-    print(f"  Recall (macro)  : {metrics['recall_macro']:.4f}")
-    print(f"  Cohen's Kappa   : {metrics['cohen_kappa']:.4f}")
-    print("─" * 45)
-    print(f"  {'Class':<14} {'Accuracy':>9} {'F1':>9} {'Recall':>9}")
-    print("─" * 45)
-    for cls, vals in metrics["per_class"].items():
-        print(
-            f"  {cls:<14} "
-            f"{vals['accuracy']:>9.4f} "
-            f"{vals['f1']:>9.4f} "
-            f"{vals['recall']:>9.4f}"
-        )
-    print("─" * 45)
+# ----------------------------------------------------------------------------------------
+# 4. Plot tSNE
+# ----------------------------------------------------------------------------------------
+CUSTOM_COLORS = [
+    "red",
+    "blue",
+    "lime",
+    "violet",
+    "cyan",
+    "orange",
+    "gold",
+    "magenta",
+    "saddlebrown",
+    "gray",
+]
+CUSTOM_CMAP = ListedColormap(CUSTOM_COLORS, name="custom_classes")
 
-def plot_tsne(X_train: np.array, y_train: np.array):
+def plot_tsne(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    class_names: dict | list | None = None,
+    random_state: int = 42,
+    cmap: ListedColormap = CUSTOM_CMAP,
+):
+    """Plot a 2D t-SNE projection colored by class.
+
+    The number of colors and legend entries adapts to the number of classes.
+    Results are reproducible thanks to the fixed `random_state`.
+
+    Args:
+        X_train: Feature matrix of shape (n_samples, n_features).
+        y_train: Class labels of shape (n_samples,).
+        class_names: Optional mapping (dict or list) from class label to display name.
+            If None, the labels themselves are used.
+        random_state: Seed for reproducible t-SNE embeddings.
+        cmap: Colormap whose colors are assigned to classes in order.
+    """
     from sklearn.manifold import TSNE
 
-    X_train_tsne = TSNE(n_components=2).fit_transform(X_train)
+    y_train_np = np.asarray(y_train)
+    classes = np.unique(y_train_np)
+    n_classes = len(classes)
 
-    # Convertendo y_train para um array NumPy caso ainda não seja
-    y_train_np = np.array(y_train)
+    if n_classes > cmap.N:
+        raise ValueError(
+            f"Got {n_classes} classes but the colormap only has {cmap.N} colors. "
+            "Add more colors to CUSTOM_COLORS."
+        )
+
+    X_train_tsne = TSNE(
+        n_components=2,
+        random_state=random_state,
+        init="pca",
+    ).fit_transform(X_train)
 
     fig, ax = plt.subplots(figsize=(5, 4))
 
-    # 2. Plotamos APENAS a classe 1 (Right - Azul)
-    ax.scatter(X_train_tsne[y_train_np == 1, 0], 
-            X_train_tsne[y_train_np == 1, 1], 
-            c='blue', 
-            label='right',  # O nome já vai direto aqui!
-            s=100, alpha=0.8, edgecolor='k', linewidth=0.5, zorder=20)
+    for i, cls in enumerate(classes):
+        mask = y_train_np == cls
+        if class_names is None:
+            label = str(cls)
+        elif isinstance(class_names, dict):
+            label = class_names.get(cls, str(cls))
+        else:
+            label = class_names[int(cls)]
 
-    # 1. Plotamos APENAS a classe 0 (Left - Vermelho)
-    ax.scatter(X_train_tsne[y_train_np == 0, 0], 
-            X_train_tsne[y_train_np == 0, 1], 
-            c='red', 
-            label='left',   # O nome já vai direto aqui!
-            s=100, alpha=0.8, edgecolor='k', linewidth=0.5, zorder=20)
+        ax.scatter(
+            X_train_tsne[mask, 0],
+            X_train_tsne[mask, 1],
+            color=cmap(i),
+            label=label,
+            s=100,
+            alpha=0.8,
+            edgecolor="k",
+            linewidth=0.5,
+            zorder=20,
+        )
 
-    ax.set_xlabel('t-SNE 1')#, fontsize=12, labelpad=10)
-    ax.set_ylabel('t-SNE 2')#, fontsize=12, labelpad=10)
-
-    # 3. Chama a legenda de forma simples (agora ela puxa os 'labels' de cima)
+    ax.set_xlabel("t-SNE 1")
+    ax.set_ylabel("t-SNE 2")
     ax.legend()
-            #bbox_to_anchor=(1.05, 1), 
-            #loc='upper left', 
-            #frameon=True)
+    ax.grid(True, ls="dotted")
 
-    ax.grid(True, ls='dotted')
-
-    # 4. TRUQUE MÁGICO: O rect dá uma "esmagada" no gráfico para a esquerda, 
-    # liberando espaço à direita para a legenda não ser cortada!
     plt.tight_layout()
-
     plt.show()

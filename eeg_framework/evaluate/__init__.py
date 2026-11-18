@@ -1,4 +1,4 @@
-from .evaluate_example import (
+from .evaluate import (
     compute_metrics,
     plot_metrics_bar,
     plot_tsne, 
