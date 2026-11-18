@@ -42,7 +42,6 @@ root/
 └── Data_Sample15.mat
 ```
 
-
 ---
 
 ## Experimental Paradigm
