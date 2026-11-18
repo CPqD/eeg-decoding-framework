@@ -1,20 +1,3 @@
-"""
-eeg_toolbox.models.eegnet
-=========================
-EEGNet: A Compact Convolutional Neural Network for EEG-based BCIs
- 
-Reference:
-    Lawhern et al. (2018) — EEGNet: a compact convolutional neural network
-    for EEG-based brain–computer interfaces.
-    Journal of Neural Engineering, 15(5), 056013.
-    https://doi.org/10.1088/1741-2552/aace8c
- 
-Architecture:
-    Input      → (n_channels, n_times, 1)
-    Block 1    → Temporal conv + Depthwise spatial conv + BN + ELU + AvgPool + Dropout
-    Block 2    → Separable conv + BN + ELU + AvgPool + Dropout
-    Classifier → Flatten + Dense(softmax)
-"""
 import mne
 from typing import Optional
 

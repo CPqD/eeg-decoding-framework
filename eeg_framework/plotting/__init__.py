@@ -1,4 +1,4 @@
-from .plotting_example import(
+from .plotting import(
     plot_erp_compare, 
     plot_topomap,
     plot_psd,

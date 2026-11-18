@@ -1,15 +1,3 @@
-"""
-plotting
-====================
-Plotting utilities for EEG exploration and debugging.
-All functions accept an mne.Epochs (or EpochsArray) and return
-the matplotlib Figure so the caller can save, tweak or close it.
- 
-Functions
----------
-plot_erp_compare    — One subplot per class, side-by-side comparison
-"""
-
 import mne 
 import warnings
 import matplotlib.pyplot as plt
@@ -403,6 +391,3 @@ def plot_tfr(
  
     if show:
         plt.show()
-
-# ---- 4. Other plots -----
-# ...
