@@ -198,3 +198,44 @@ def summary(
             f"{vals['recall']:>9.4f}"
         )
     print("─" * 45)
+
+def plot_tsne(X_train: np.array, y_train: np.array):
+    from sklearn.manifold import TSNE
+
+    X_train_tsne = TSNE(n_components=2).fit_transform(X_train)
+
+    # Convertendo y_train para um array NumPy caso ainda não seja
+    y_train_np = np.array(y_train)
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+
+    # 2. Plotamos APENAS a classe 1 (Right - Azul)
+    ax.scatter(X_train_tsne[y_train_np == 1, 0], 
+            X_train_tsne[y_train_np == 1, 1], 
+            c='blue', 
+            label='right',  # O nome já vai direto aqui!
+            s=100, alpha=0.8, edgecolor='k', linewidth=0.5, zorder=20)
+
+    # 1. Plotamos APENAS a classe 0 (Left - Vermelho)
+    ax.scatter(X_train_tsne[y_train_np == 0, 0], 
+            X_train_tsne[y_train_np == 0, 1], 
+            c='red', 
+            label='left',   # O nome já vai direto aqui!
+            s=100, alpha=0.8, edgecolor='k', linewidth=0.5, zorder=20)
+
+    ax.set_xlabel('t-SNE 1')#, fontsize=12, labelpad=10)
+    ax.set_ylabel('t-SNE 2')#, fontsize=12, labelpad=10)
+
+    # 3. Chama a legenda de forma simples (agora ela puxa os 'labels' de cima)
+    ax.legend()
+            #bbox_to_anchor=(1.05, 1), 
+            #loc='upper left', 
+            #frameon=True)
+
+    ax.grid(True, ls='dotted')
+
+    # 4. TRUQUE MÁGICO: O rect dá uma "esmagada" no gráfico para a esquerda, 
+    # liberando espaço à direita para a legenda não ser cortada!
+    plt.tight_layout()
+
+    plt.show()

@@ -139,3 +139,95 @@ class CSP(BaseFeature):
         X = np.concatenate(X_parts, axis=1)
         y = self._get_y(epochs, mapping=getattr(self, '_label_mapping', None))
         return X, y
+
+# -----------------------------------------------------------------------------------------
+# 3. PSD Bands
+# -----------------------------------------------------------------------------------------
+# ---- Default frequency bands -------------------------------------------------
+BANDS = {
+    "delta": (1,   4),
+    "theta": (4,   8),
+    "alpha": (8,  13),
+    "beta":  (13, 30),
+    "gamma": (30, 45),
+}
+
+class PSDBands(BaseFeature):
+    """
+    Mean power per frequency band per channel, with optional windowing.
+ 
+    Output shape:
+        window_size=None → (n_epochs, n_channels × n_bands)
+        windowed         → (n_epochs, n_windows × n_channels × n_bands)
+ 
+    Parameters
+    ----------
+    bands : dict | None
+        Frequency bands as {name: (fmin, fmax)}. Default: standard bands.
+    window_size : float | None
+        Window duration in seconds. None = full trial (default).
+    stride : float | None
+        Step between windows in seconds. None = window_size (no overlap).
+    method : str
+        PSD method: 'welch' (default) or 'multitaper'.
+    n_fft : int
+        FFT length for Welch.
+    picks : str | list
+    verbose : bool | str | int | None
+    """
+    def __init__(
+        self,
+        bands:       Optional[dict]              = None,
+        window_size: Optional[float]             = None,
+        stride:      Optional[float]             = None,
+        method:      str                         = "welch",
+        n_fft:       int                         = 256,
+        picks:       Union[str, list]            = "eeg",
+        verbose:     Union[bool, str, int, None] = False,
+    ) -> None:
+        self.bands       = bands or BANDS
+        self.window_size = window_size
+        self.stride      = stride
+        self.method      = method
+        self.n_fft       = n_fft
+        self.picks       = picks
+        self.verbose     = verbose
+    
+    def transform(self, epochs: mne.BaseEpochs) -> tuple[np.ndarray, np.ndarray]:
+        sfreq = epochs.info["sfreq"]
+        n_times = epochs.get_data().shape[2]
+        windows = self._get_windows(n_times, sfreq, self.window_size, self.stride)
+        
+        all_windows = []
+
+        for w_start, w_end in windows:
+            tmin_crop = epochs.tmin + w_start / sfreq
+            tmax_crop = epochs.tmin + (w_end - 1) / sfreq
+            ep_win = epochs.copy().crop(
+                tmin=tmin_crop,
+                tmax=tmax_crop,
+            )
+            win_features = []
+
+            for fmin, fmax in self.bands.values():
+                spectrum = ep_win.compute_psd(
+                    method  = self.method,
+                    fmin    = fmin,
+                    fmax    = fmax,
+                    n_fft   = min(self.n_fft, w_end - w_start),
+                    picks   = self.picks,
+                    verbose = self.verbose,
+                )
+                psds, _ = spectrum.get_data(return_freqs=True) # (n_epochs, n_ch, n_freqs)
+                win_features.append(psds.mean(axis=2))         # (n_epochs, n_ch)
+            
+            all_windows.append(np.concatenate(win_features, axis=1))
+        
+        X = np.concatenate(all_windows, axis=1)
+        y = self._get_y(epochs, mapping=getattr(self, '_label_mapping', None))
+
+        print(
+            f"[PSDBands] windows={len(windows)} | bands={list(self.bands.keys())} | "
+            f"features per epoch: {X.shape[1]}"
+        )
+        return X, y
