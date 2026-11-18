@@ -1,4 +1,4 @@
-from .eegnet_example import (
+from .eegnet import (
     build_eegnet,
     eegnet_params_from_epochs
 )
