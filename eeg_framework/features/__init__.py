@@ -1,8 +1,8 @@
-from .features import (
+from .features_base import (
     FeaturePipeline
 )
 
-from .features_example import (
+from .features import (
     RawFeatures, CSP, PSDBands
 )
 

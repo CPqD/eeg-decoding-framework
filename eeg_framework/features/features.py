@@ -1,215 +1,215 @@
-"""
-eeg_toolbox.features
-====================
-Feature extraction pipeline for MNE Epochs, sklearn-style.
- 
-Different from preprocessing, feature extractors:
-* Receive  mne.Epochs
-* Return   np.ndarray (X) + np.ndarray (y)
-* Are      composable via FeaturePipeline
- 
-Classes
--------
-BaseFeature       — abstract base
-FeaturePipeline   — Concatenates features from multiple extractors
- 
-"""
-
 import mne
-import warnings
 import numpy as np
 from typing import Optional, Union
+from .features_base import BaseFeature
 
-# ------------------------------------------------------------------------------
-# Base class
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------
+# 1. Raw Features
+# --------------------------------------------------------------------------------------------------
+class RawFeatures(BaseFeature):
+    """
+    Returns raw EEG data as features — no extraction.
+    Useful for deep learning models that learn features automatically (e.g. EEGNet).
 
-class BaseFeature:
+    Output shape: (n_epochs, n_channels × n_times) or (n_epochs, n_channels, n_times)
     """
-    Abstract base for all feature extractors.
- 
-    fit(epochs, y)        — learn parameters from labelled training data
-    transform(epochs)     — extract features → (X, y)
-    fit_transform(e, y)   — fit then transform
- 
-    All extractors follow the same contract:
-        X shape: (n_epochs, n_features)
-        y shape: (n_epochs,)  integer labels
-    """
-    def fit(self, epochs: mne.BaseEpochs, y: Optional[np.ndarray] = None) -> "BaseFeature":
-        sorted_codes = sorted(epochs.event_id.values())
-        self._label_mapping = {code: idx for idx, code in enumerate(sorted_codes)}
-        return self
+    def __init__(
+        self,
+        picks:   Union[str, list] = "eeg",
+        flatten: bool             = True,
+    ) -> None:
+        self.picks   = picks
+        self.flatten = flatten
 
     def transform(self, epochs: mne.BaseEpochs) -> tuple[np.ndarray, np.ndarray]:
-        raise NotImplementedError
+        if isinstance(self.picks, str):
+            ch_idx = mne.pick_types(epochs.info, **{self.picks: True})
+        else:
+            ch_idx = [epochs.ch_names.index(c) for c in self.picks]
+            
+        data = epochs.get_data()[:, ch_idx, :]  # (n_epochs, n_ch, n_times)
 
-    def fit_transform(self, epochs:mne.BaseEpochs, y: Optional[np.ndarray] = None) -> tuple[np.ndarray, np.ndarray]:
-        return self.fit(epochs, y).transform(epochs)
-    
-    # ---- sklearn compatibility -----------------------------------------
-    def get_params(self) -> dict:
-        import inspect
-        sig    = inspect.signature(self.__class__.__init__)
-        params = {}
-        for name, param in sig.parameters.items():
-            if name == "self":
-                continue
-            params[name] = getattr(self, name, param.default)
-        return params
- 
-    def set_params(self, **params) -> "BaseFeature":
-        for k, v in params.items():
-            if not hasattr(self, k):
-                raise ValueError(f"{self.__class__.__name__} has no parameter '{k}'")
-            setattr(self, k, v)
-        return self
- 
-    def __repr__(self) -> str:
-        params = ", ".join(f"{k}={v!r}" for k, v in self.get_params().items())
-        return f"{self.__class__.__name__}({params})"
- 
-    # ---- helpers -------------------------------------------------------------
-    @staticmethod
-    def _get_y(epochs: mne.BaseEpochs, mapping=None) -> np.ndarray:
-        """Extract integer labels from epochs.events."""
-        if mapping is None:
-            sorted_codes = sorted(epochs.event_id.values())
-            mapping = {code: idx for idx, code in enumerate(sorted_codes)}
-        labels = epochs.events[:, 2].astype(int)
-        return np.array([mapping[l] for l in labels])
-    
-    @staticmethod
-    def _get_windows(
-        n_times:     int,
-        sfreq:       float,
-        window_size: Optional[float],
-        stride:      Optional[float],
-    ) -> list[tuple[int, int]]:
-        """
-        Compute (start, end) sample indices for sliding windows.
- 
-        Parameters
-        ----------
-        n_times : int
-            Total number of time samples.
-        sfreq : float
-            Sampling frequency in Hz.
-        window_size : float | None
-            Window duration in seconds. None = full trial.
-        stride : float | None
-            Step between windows in seconds.
-            None = same as window_size (no overlap).
- 
-        Returns
-        -------
-        list of (start, end) tuples in samples.
-        """
-        if window_size is None:
-            return [(0, n_times)]
- 
-        win_samples    = int(window_size * sfreq)
-        stride_samples = int((stride if stride is not None else window_size) * sfreq)
- 
-        windows = []
-        start   = 0
-        while start + win_samples <= n_times:
-            windows.append((start, start + win_samples))
-            start += stride_samples
- 
-        if not windows:
-            warnings.warn(
-                f"window_size ({window_size}s) larger than signal duration "
-                f"({n_times/sfreq:.2f}s). Using full trial.",
-                RuntimeWarning,
-            )
-            return [(0, n_times)]
- 
-        return windows
+        if self.flatten:
+            X = data.reshape(data.shape[0], -1) # (n_epochs, n_ch x n_times)
+        else:
+            X = data                            # (n_epochs, n_ch, n_times)
 
-# --------------------------------------------------------------------------------------------------
-# Feature Pipeline
-# --------------------------------------------------------------------------------------------------
-class FeaturePipeline:
+        y = self._get_y(epochs, mapping=getattr(self, '_label_mapping', None))
+        print(f"[RawFeatures] shape: {X.shape}")
+        return X, y
+
+# -----------------------------------------------------------------------------------------
+# 2. CSP - Common Spatial Patterns
+# -----------------------------------------------------------------------------------------
+class CSP(BaseFeature):
     """
-    Concatenates features from multiple extractors into a single (X, y).
+    Common Spatial Patterns with One-vs-Rest multiclass extension.
  
-    Each step extracts features independently from the same epochs,
-    and results are horizontally concatenated.
+    For each class, fits a binary CSP (class vs all others), extracts
+    log-variance features, and concatenates across all classes.
+ 
+    Note: CSP operates on the full trial — windowing is not supported
+    as it would change the covariance structure.
  
     Parameters
     ----------
-    steps : list[tuple[str, BaseFeature]]
+    n_components : int
+        Number of CSP components per binary problem (default 6).
+        Total features = n_components × n_classes.
+    reg : float | str | None
+        Regularization for covariance estimation.
+    log : bool
+        If True (default), use log-variance. If False, use variance.
+    verbose : bool | str | int | None
  
-    Examples
-    --------
-    >>> pipe = FeaturePipeline([
-    ...     ('raw',     RawFeatures()),
-    ... ])
-    >>> X_train, y_train = pipe.fit_transform(epochs_train)
-    >>> X_test,  y_test  = pipe.transform(epochs_test)
+    Attributes
+    ----------
+    csp_list_ : list[mne.decoding.CSP]
+        Fitted CSP objects, one per class (OVR).
+    classes_ : np.ndarray
+        Unique class labels found during fit.
+    n_features_ : int
+        Total number of features after fit.
     """
-    def __init__(self, steps: list[tuple[str, BaseFeature]]) -> None:
-        self._validate_steps(steps)
-        self.steps = steps
+    def __init__(
+            self, 
+            n_components: int                         = 6,
+            reg:          Optional[Union[float, str]] = None,
+            log:          bool                        = True,
+            verbose:      Union[bool, str, int, None] = False,
+    ) -> None:
+        self.n_components = n_components
+        self.reg          = reg
+        self.log          = log
+        self.verbose      = verbose
 
-    # ---- dict-like acess --------------------------------------------------------
-    def __getitem__(self, name: str) -> BaseFeature:
-        for n, step in self.steps:
-            if n == name:
-                return step
-        raise KeyError(f"Step '{name}' not found. Available: {list(self.named_steps)}")
- 
-    @property
-    def named_steps(self) -> dict[str, BaseFeature]:
-        return {n: s for n, s in self.steps}
-    
-    # ---- core API ---------------------------------------------------------------
-    def fit(
-        self, epochs: mne.BaseEpochs, y: Optional[np.ndarray] = None
-    ) -> "FeaturePipeline":
+        self.csp_list_    = []
+        self.classes_     = None
+        self.n_features_  = 0
+
+    def fit(self, epochs: mne.BaseEpochs, y: Optional[np.ndarray] = None) -> "CSP":
+        super().fit(epochs, y)
         if y is None:
-            y = BaseFeature._get_y(epochs)
-        for name, step in self.steps:
-            print(f"[FeaturePipeline] fitting → {name}")
-            step.fit(epochs, y)
+            y = self._get_y(epochs, mapping=getattr(self, '_label_mapping', None))
+        
+        self.classes_  = np.unique(y)
+        self.csp_list_ = []
+
+        for cls in self.classes_:
+            y_bin = (y==cls).astype(int)
+            csp = mne.decoding.CSP(
+                n_components=self.n_components,
+                reg         =self.reg,
+                log         =self.log,
+                norm_trace  =False,
+            )
+            csp.fit(epochs.get_data(), y_bin)
+            self.csp_list_.append(csp)
+        
+        self.n_features_ = self.n_components * len(self.classes_)
+        print(
+            f"[CSP] fitted OVR for {len(self.classes_)} classes | "
+            f"total features: {self.n_features_}"
+        )
         return self
- 
+    
     def transform(self, epochs: mne.BaseEpochs) -> tuple[np.ndarray, np.ndarray]:
-        X_parts = []
-        y_ref   = None
-        for name, step in self.steps:
-            print(f"[FeaturePipeline] extracting → {name}")
-            X_i, y_i = step.transform(epochs)
-            if y_ref is None:
-                y_ref = y_i
-            X_parts.append(X_i)
-        return np.concatenate(X_parts, axis=1), y_ref
+        if not self.csp_list_:
+            raise RuntimeError("Call fit() before transform().")
  
-    def fit_transform(
-        self, epochs: mne.BaseEpochs, y: Optional[np.ndarray] = None
-    ) -> tuple[np.ndarray, np.ndarray]:
-        self.fit(epochs, y)
-        return self.transform(epochs)
+        X_parts = [csp.transform(epochs.get_data()) for csp in self.csp_list_]
+        X = np.concatenate(X_parts, axis=1)
+        y = self._get_y(epochs, mapping=getattr(self, '_label_mapping', None))
+        return X, y
 
-    # ---- inspection -------------------------------------------------------------
-    def __repr__(self) -> str:
-        lines = ["FeaturePipeline("]
-        for name, step in self.steps:
-            lines.append(f"  ('{name}', {step!r})")
-        lines.append(")")
-        return "\n".join(lines)
+# -----------------------------------------------------------------------------------------
+# 3. PSD Bands
+# -----------------------------------------------------------------------------------------
+# ---- Default frequency bands -------------------------------------------------
+BANDS = {
+    "delta": (1,   4),
+    "theta": (4,   8),
+    "alpha": (8,  13),
+    "beta":  (13, 30),
+    "gamma": (30, 45),
+}
 
-    # ---- validation -------------------------------------------------------------
-    def _validate_steps(self, steps: list) -> None:
-        if not steps:
-            raise ValueError("FeaturePipeline must have at least one step.")
-        names = [n for n, _ in steps]
-        if len(names) != len(set(names)):
-            raise ValueError("Step names must be unique.")
-        for name, step in steps:
-            if not isinstance(step, BaseFeature):
-                raise TypeError(
-                    f"Step '{name}' must be a BaseFeature subclass, "
-                    f"got {type(step).__name__}."
+class PSDBands(BaseFeature):
+    """
+    Mean power per frequency band per channel, with optional windowing.
+ 
+    Output shape:
+        window_size=None → (n_epochs, n_channels × n_bands)
+        windowed         → (n_epochs, n_windows × n_channels × n_bands)
+ 
+    Parameters
+    ----------
+    bands : dict | None
+        Frequency bands as {name: (fmin, fmax)}. Default: standard bands.
+    window_size : float | None
+        Window duration in seconds. None = full trial (default).
+    stride : float | None
+        Step between windows in seconds. None = window_size (no overlap).
+    method : str
+        PSD method: 'welch' (default) or 'multitaper'.
+    n_fft : int
+        FFT length for Welch.
+    picks : str | list
+    verbose : bool | str | int | None
+    """
+    def __init__(
+        self,
+        bands:       Optional[dict]              = None,
+        window_size: Optional[float]             = None,
+        stride:      Optional[float]             = None,
+        method:      str                         = "welch",
+        n_fft:       int                         = 256,
+        picks:       Union[str, list]            = "eeg",
+        verbose:     Union[bool, str, int, None] = False,
+    ) -> None:
+        self.bands       = bands or BANDS
+        self.window_size = window_size
+        self.stride      = stride
+        self.method      = method
+        self.n_fft       = n_fft
+        self.picks       = picks
+        self.verbose     = verbose
+    
+    def transform(self, epochs: mne.BaseEpochs) -> tuple[np.ndarray, np.ndarray]:
+        sfreq = epochs.info["sfreq"]
+        n_times = epochs.get_data().shape[2]
+        windows = self._get_windows(n_times, sfreq, self.window_size, self.stride)
+        
+        all_windows = []
+
+        for w_start, w_end in windows:
+            tmin_crop = epochs.tmin + w_start / sfreq
+            tmax_crop = epochs.tmin + (w_end - 1) / sfreq
+            ep_win = epochs.copy().crop(
+                tmin=tmin_crop,
+                tmax=tmax_crop,
+            )
+            win_features = []
+
+            for fmin, fmax in self.bands.values():
+                spectrum = ep_win.compute_psd(
+                    method  = self.method,
+                    fmin    = fmin,
+                    fmax    = fmax,
+                    n_fft   = min(self.n_fft, w_end - w_start),
+                    picks   = self.picks,
+                    verbose = self.verbose,
                 )
+                psds, _ = spectrum.get_data(return_freqs=True) # (n_epochs, n_ch, n_freqs)
+                win_features.append(psds.mean(axis=2))         # (n_epochs, n_ch)
+            
+            all_windows.append(np.concatenate(win_features, axis=1))
+        
+        X = np.concatenate(all_windows, axis=1)
+        y = self._get_y(epochs, mapping=getattr(self, '_label_mapping', None))
+
+        print(
+            f"[PSDBands] windows={len(windows)} | bands={list(self.bands.keys())} | "
+            f"features per epoch: {X.shape[1]}"
+        )
+        return X, y
