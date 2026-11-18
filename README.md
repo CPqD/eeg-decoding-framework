@@ -49,6 +49,22 @@ Download: [OpenBMI](https://gigadb.org/dataset/100542)
 
 ---
 
+### BCI Competition 2020 Track #3
+
+15 subjects, 64 EEG channels, ~256 Hz.  
+5 classes: hello, help_me, stop, thank_you, yes.
+
+```python
+from eeg_toolbox.datasets import load_bci2020_track3
+
+epochs_train = load_bci2020_track3(root_dir="data/BCI Competition 2020 - Track#3", split="train",      subjects=[1])
+epochs_valid = load_bci2020_track3(root_dir="data/BCI Competition 2020 - Track#3", split="validation", subjects=[1])
+```
+
+Download: [OSF pq7vb](https://osf.io/pq7vb/files/osfstorage)
+
+---
+
 ## Preprocessing
 
 All steps follow the `fit` / `transform` / `fit_transform` convention.  
